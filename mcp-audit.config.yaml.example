@@ -1,0 +1,7 @@
+# mcp-audit configuration (optional). Copy to mcp-audit.config.yaml.
+failOn: high                 # min severity that makes --ci exit non-zero
+minSeverity: low             # min severity reported at all
+disabledRules: []            # e.g. ["MCP009"]
+secretPatterns:              # extra regexes appended to the built-in set
+  - "myco_[A-Za-z0-9]{20,}"
+timeoutMs: 10000             # server startup/introspection timeout (ms)
