@@ -24,6 +24,24 @@ describe("classifyTool (§8.3)", () => {
     expect(t.executor).toBe(false);
   });
 
+  // Regression: a search/memory tool with a `query` param must NOT be flagged as
+  // an executor (MCP001). Found by auditing a real memory MCP server whose
+  // `recall`/`compare` tools were wrongly reported as "executes arbitrary code".
+  it("recall(query) → source only, NOT executor", () => {
+    const t = classifyTool(
+      tool("recall", "Answer a question from memory by graph traversal.", [param("query")]),
+    );
+    expect(t.executor).toBe(false);
+    expect(t.source).toBe(true);
+  });
+
+  it("run_sql → still executor (real SQL execution is not a false positive)", () => {
+    const t = classifyTool(
+      tool("run_sql", "Execute an arbitrary SQL statement.", [param("sql")]),
+    );
+    expect(t.executor).toBe(true);
+  });
+
   it("http_fetch → source AND sink", () => {
     const t = classifyTool(
       tool("http_fetch", "Fetch a URL over HTTP and return the body.", [param("url")]),

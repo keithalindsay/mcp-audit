@@ -29,11 +29,13 @@ const EXECUTOR_TOKENS = [
   "eval",
   "spawn",
   "sql",
-  "query",
   "script",
   "bash",
-  "process",
 ];
+// NOTE: "query" and "process" are deliberately NOT executor tokens — a
+// search/memory `query` param is a data SOURCE (below), not code execution, and
+// "process" (process_data) is usually benign. Real SQL/code executors carry
+// stronger signals ("sql", "execute", "exec", "shell", "eval", "spawn", …).
 
 const SOURCE_TOKENS = [
   "read",
