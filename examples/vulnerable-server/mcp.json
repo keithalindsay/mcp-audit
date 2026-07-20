@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "vulnerable-demo": {
+      "command": "node",
+      "args": ["dist/vulnerable-server.js"],
+      "env": {
+        "API_TOKEN": "sk-abcd1234abcd1234abcd1234abcd1234",
+        "DEBUG": "true"
+      }
+    }
+  }
+}
