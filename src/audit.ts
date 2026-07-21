@@ -27,6 +27,12 @@ export type AuditOptions = {
   config: Config;
   /** Run the optional Anthropic LLM pass. */
   llm?: boolean;
+  /**
+   * Findings to merge into the report regardless of the live introspection (e.g. a
+   * connection/introspection error surfaced by the caller when a config server could
+   * not be launched, so the static config scan still runs and is reported).
+   */
+  injectedFindings?: Finding[];
 };
 
 function buildSecretPatterns(config: Config): SecretPattern[] {
@@ -69,6 +75,16 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
   const findings = runRules(ctx, {
     disabledRules: config.disabledRules,
     minSeverity: config.minSeverity,
+  });
+
+  // Merge any caller-supplied findings (e.g. a connection/introspection error) so they
+  // count toward totals + exit code and are ranked alongside the rule findings.
+  for (const f of opts.injectedFindings ?? []) {
+    if (severityAtLeast(f.severity, config.minSeverity)) findings.push(f);
+  }
+  findings.sort((a, b) => {
+    const order: Record<Severity, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
+    return order[b.severity] - order[a.severity] || a.ruleId.localeCompare(b.ruleId);
   });
 
   if (opts.llm && model) {

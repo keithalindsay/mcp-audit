@@ -50,11 +50,25 @@ function shannonEntropy(s: string): number {
   return bits;
 }
 
+/**
+ * Filesystem paths and package specs routinely appear in real MCP config args
+ * (npx/pnpm content-addressed cache dirs, `--allowed-dir=/var/data/2024/...`) and are
+ * long, mixed-alnum strings that look "high entropy" — but a path is not a credential.
+ * A credential does not contain path separators, so treat any `/`- or `\`-containing
+ * (after stripping a leading `--flag=` prefix) value as a path, never a secret. Named
+ * patterns (sk-…, ghp_…) already ran first, so real keys are unaffected.
+ */
+function looksLikePath(value: string): boolean {
+  const v = value.replace(/^--?[A-Za-z0-9][\w-]*=/, "");
+  return v.includes("/") || v.includes("\\");
+}
+
 /** High-entropy fallback: long, random-looking values that dodge the named patterns. */
 function looksHighEntropy(value: string): boolean {
   const v = value.trim();
   if (v.length < 32) return false;
   if (/\s/.test(v)) return false; // real secrets don't contain whitespace
+  if (looksLikePath(v)) return false; // a filesystem path / package spec is not a credential
   if (!/[A-Za-z]/.test(v) || !/[0-9]/.test(v)) return false; // needs mixed classes
   return shannonEntropy(v) >= 3.6;
 }

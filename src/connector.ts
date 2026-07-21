@@ -106,14 +106,25 @@ export async function introspect(
     await withTimeout(client.connect(transport), timeoutMs, "MCP connect");
 
     const version = client.getServerVersion();
+    const caps = client.getServerCapabilities();
 
-    // Each list call may fail if the server doesn't advertise that capability; treat
-    // an absent capability as an empty list rather than a fatal error.
-    const tools = await safeList(
-      () => client.listTools(),
-      (r) => r.tools,
-      timeoutMs,
-    );
+    // tools/list is the PRIMARY introspection surface. Distinguish "no tools
+    // capability advertised" (a genuine empty toolset — fine) from "the server
+    // advertises tools but the list call errors/times out" (a real introspection
+    // failure). The latter must NOT be silently reported as "0 tools, all clear":
+    // let it throw so the audit exits with the connection/introspection error code
+    // (2), rather than handing out a false clean bill of health.
+    let tools: Awaited<ReturnType<typeof client.listTools>>["tools"] = [];
+    if (caps?.tools) {
+      const result = await withTimeout(
+        client.listTools(),
+        timeoutMs,
+        "MCP tools/list",
+      );
+      tools = result.tools;
+    }
+
+    // resources/prompts are secondary: an absent capability is safely an empty list.
     const resources = await safeList(
       () => client.listResources(),
       (r) => r.resources,

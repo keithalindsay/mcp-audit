@@ -10,6 +10,7 @@ import {
   SeveritySchema,
   type AuditReport,
   type Config,
+  type Finding,
   type ServerSpec,
   type Severity,
 } from "./schemas.js";
@@ -38,6 +39,21 @@ function parseServerSpec(cmd: string, cwd?: string): ServerSpec {
   const command = parts[0];
   if (!command) throw new Error("--server requires a command, e.g. --server \"node dist/server.js\"");
   return { command, args: parts.slice(1), cwd, label: cmd.trim() };
+}
+
+/** A finding recording that a config server could not be introspected. */
+function connectionErrorFinding(serverName: string, message: string): Finding {
+  return {
+    ruleId: "MCP000",
+    severity: "high",
+    category: "connection",
+    title: `${serverName} could not be introspected`,
+    detail: `mcp-audit could not launch/introspect server "${serverName}" (${message}). Its live tool surface was NOT audited; only the static config scan ran. A server that cannot be enumerated must not be treated as clean.`,
+    location: serverName,
+    remediation:
+      "Verify the server command/args launch on this machine and that it responds to the MCP handshake + tools/list, then re-run the audit.",
+    confidence: "high",
+  };
 }
 
 function emit(reports: AuditReport[], jsonPath: string | boolean | undefined): void {
@@ -122,7 +138,26 @@ program
             config: baseConfig,
             llm: opts.llm,
           };
-          reports.push(await runAudit(auditOpts));
+          // Isolate each server: a single unlaunchable/crashing server must NOT abort
+          // the whole command. On introspection failure, still run the static config
+          // scan (MCP005 needs no live server) and record the failure as a finding, so
+          // the other servers — and every server's planted secrets — are still audited.
+          try {
+            reports.push(await runAudit(auditOpts));
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            process.stderr.write(
+              `warning: server "${srv.name}" could not be introspected: ${message}\n`,
+            );
+            reports.push(
+              await runAudit({
+                configServer: srv,
+                configPath: cfgModel.path,
+                config: baseConfig,
+                injectedFindings: [connectionErrorFinding(srv.name, message)],
+              }),
+            );
+          }
         }
       }
 

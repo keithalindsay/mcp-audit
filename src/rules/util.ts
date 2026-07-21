@@ -17,7 +17,11 @@ export type ParamIntent = "path" | "url" | "command" | null;
 
 const PATH_TOKENS = ["path", "file", "filename", "filepath", "dir", "directory", "location", "folder"];
 const URL_TOKENS = ["url", "uri", "endpoint", "host", "hostname", "address", "link", "target"];
-const COMMAND_TOKENS = ["command", "cmd", "script", "code", "query", "sql", "arg", "args", "input", "eval", "expression"];
+// NOTE: "query" is deliberately NOT a command token — mirroring classify.ts, a
+// natural-language search/memory `query` param is a data SOURCE, not a command/code
+// path, so MCP006 must not flag it. Real command inputs carry stronger signals
+// ("command", "cmd", "script", "code", "sql", "eval", "expression", …).
+const COMMAND_TOKENS = ["command", "cmd", "script", "code", "sql", "arg", "args", "input", "eval", "expression"];
 
 /**
  * Classify a parameter by what its NAME implies. Used to route unconstrained-string
