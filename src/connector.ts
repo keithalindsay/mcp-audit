@@ -18,7 +18,7 @@ import type {
  * a server cannot trigger its side effects.
  */
 
-const CLIENT_INFO = { name: "mcp-audit", version: "0.1.0" };
+const CLIENT_INFO = { name: "mcp-audit", version: "0.2.0" };
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {

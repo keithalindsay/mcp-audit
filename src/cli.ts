@@ -25,7 +25,7 @@ const program = new Command();
 program
   .name("mcp-audit")
   .description("A security linter for MCP servers (connect, introspect, flag risky tool designs).")
-  .version("0.1.0")
+  .version("0.2.0")
   .option("--no-color", "disable colored output");
 
 function useColor(): boolean {

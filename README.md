@@ -13,7 +13,7 @@ on a bundled vulnerable server, zero setup, no API key.
 ![mcp-audit demo output](docs/screenshot-placeholder.png)
 
 ```text
-$ npx mcp-audit demo
+$ npx @keithalindsay/mcp-audit demo
 
 mcp-audit · target=vulnerable-demo  (3 tools, 1 resource, 0 prompts)
 
@@ -63,8 +63,8 @@ agent.**
 ## Quickstart (60 seconds, offline)
 
 ```bash
-npx mcp-audit demo        # audit the bundled deliberately-vulnerable server, no key
-npx mcp-audit rules       # list the full check catalog
+npx @keithalindsay/mcp-audit demo        # audit the bundled deliberately-vulnerable server, no key
+npx @keithalindsay/mcp-audit rules       # list the full check catalog
 ```
 
 `demo` spawns a bundled insecure MCP server over real stdio MCP, introspects it, scans a
@@ -76,14 +76,14 @@ planted config secret, and prints ranked findings — entirely offline.
 
 ```bash
 # Launch and introspect a single stdio server
-npx mcp-audit audit --server "node dist/server.js"
-npx mcp-audit audit --server "python -m my_server"
+npx @keithalindsay/mcp-audit audit --server "node dist/server.js"
+npx @keithalindsay/mcp-audit audit --server "python -m my_server"
 
 # Audit every server defined in a Claude Desktop / mcp.json config
-npx mcp-audit audit --config ~/.config/Claude/claude_desktop_config.json
+npx @keithalindsay/mcp-audit audit --config ~/.config/Claude/claude_desktop_config.json
 
 # Machine-readable output + a minimum severity filter
-npx mcp-audit audit --server "node dist/server.js" --json report.json --min-severity high
+npx @keithalindsay/mcp-audit audit --server "node dist/server.js" --json report.json --min-severity high
 ```
 
 - `--server "<cmd>"` — launch + introspect this stdio server.
@@ -147,7 +147,7 @@ jobs:
         with: { node-version: 20 }
       - run: npm ci && npm run build
       - name: Audit the MCP server
-        run: npx mcp-audit audit --server "node dist/server.js" --ci --min-severity high
+        run: npx @keithalindsay/mcp-audit audit --server "node dist/server.js" --ci --min-severity high
 ```
 
 ---
@@ -179,7 +179,7 @@ Anthropic Claude to reason about subtler risks the heuristics miss. It is **off 
 default** — the deterministic rules are the product and run fully offline.
 
 ```bash
-ANTHROPIC_API_KEY=sk-... npx mcp-audit audit --server "node dist/server.js" --llm
+ANTHROPIC_API_KEY=sk-... npx @keithalindsay/mcp-audit audit --server "node dist/server.js" --llm
 ```
 
 The model id is read from `MCP_AUDIT_MODEL` (default `claude-haiku-4-5`). The
