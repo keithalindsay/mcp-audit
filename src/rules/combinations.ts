@@ -1,5 +1,31 @@
 import type { Finding } from "../schemas.js";
+import type { Tool } from "../schemas.js";
 import type { Rule, RuleContext } from "./types.js";
+import { hasAnyToken, normalize, paramIntent } from "./util.js";
+
+// "local"/"env"/"secret" name data on the operator's own machine; "file"/"key" are
+// weaker because remote project files and API keys-as-arguments use them too.
+const STRONG_PRIVATE_TOKENS = ["local", "env", "secret", "secrets", "credential", "credentials", "home", "ssh"];
+const WEAK_PRIVATE_TOKENS = ["file", "files", "key"];
+
+/**
+ * How strongly a source tool reads PRIVATE data. A free-form path parameter is the
+ * strongest signal (it reaches anything the process can read); private-data words
+ * come next. Used to name the leg that actually makes the chain dangerous — the
+ * first-found source was a field regression (`check_domino_job_run_status` was named
+ * instead of `sync_local_file_to_domino`, which reads any local path).
+ */
+function privateDataStrength(t: Tool): number {
+  const pathParams = t.params.filter((p) => paramIntent(p.name) === "path");
+  // A path param that is itself named for private data (`local_file_path`, `ssh_key_path`)
+  // is the strongest signal of all: it is the parameter that reaches the operator's disk.
+  const privatePath = pathParams.some((p) => hasAnyToken(normalize(p.name), STRONG_PRIVATE_TOKENS));
+  const pathParam = privatePath ? 4 : pathParams.length > 0 ? 2 : 0;
+  const text = normalize(`${t.name} ${t.description}`);
+  const strong = hasAnyToken(text, STRONG_PRIVATE_TOKENS) ? 2 : 0;
+  const weak = hasAnyToken(text, WEAK_PRIVATE_TOKENS) ? 1 : 0;
+  return pathParam + strong + weak;
+}
 
 /**
  * rules/combinations.ts — taint / lethal-trifecta combination analysis.
@@ -34,9 +60,22 @@ export const MCP004: Rule = {
 
     // Pick the clearest pairing: prefer a pure source (not also a sink) as the
     // "reads private data" leg, and any sink as the "sends out" leg.
-    const pureSource = sources.find((t) => !ctx.classified.get(t.name)?.sink);
-    const sourceTool = pureSource ?? sources[0];
-    const sinkTool = sinks.find((t) => t.name !== sourceTool?.name) ?? sinks[0]!;
+    // Strength decides first; a "pure" source (not also a sink) only breaks ties, then
+    // discovery order. Preferring pure sources FIRST was the field regression: the real
+    // local-file reader also uploads, so a weaker remote-listing tool was named instead.
+    const isPure = (t: Tool) => (ctx.classified.get(t.name)?.sink ? 0 : 1);
+    const ranked = [...sources].sort(
+      (a, b) => privateDataStrength(b) - privateDataStrength(a) || isPure(b) - isPure(a),
+    );
+    const sourceTool = ranked[0];
+    // Prefer a sink that reaches an ARBITRARY destination (a free-form URL/host param)
+    // over one that writes to the platform's own storage: the open URL is the leg an
+    // attacker controls. Discovery order breaks ties.
+    const reachesArbitraryHost = (t: Tool) =>
+      t.params.some((p) => paramIntent(p.name) === "url") ? 1 : 0;
+    const otherSinks = sinks.filter((t) => t.name !== sourceTool?.name);
+    const sinkTool =
+      [...otherSinks].sort((a, b) => reachesArbitraryHost(b) - reachesArbitraryHost(a))[0] ?? sinks[0]!;
 
     const sourceLabel =
       sourceTool?.name ??

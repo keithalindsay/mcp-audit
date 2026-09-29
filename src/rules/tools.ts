@@ -1,10 +1,12 @@
 import type { Finding, Tool } from "../schemas.js";
 import type { Rule, RuleContext } from "./types.js";
+import { isCommandParam } from "../classify.js";
 import {
   isUnconstrainedString,
   paramIntent,
   toolText,
   hasAnyToken,
+  normalize,
 } from "./util.js";
 
 /**
@@ -28,10 +30,9 @@ export const MCP001: Rule = {
     for (const t of tools(ctx)) {
       const tags = ctx.classified.get(t.name);
       if (!tags?.executor) continue;
-      // Prefer to name the parameter that gets executed.
-      const execParam =
-        t.params.find((p) => ["command", "cmd", "script", "code", "query", "sql", "eval", "expression"].includes(p.name.toLowerCase())) ??
-        t.params[0];
+      // Name the parameter that carries the command/code. If none does, name none —
+      // blaming the first param (`connectionId`, `user_name`) was a field regression.
+      const execParam = t.params.find((p) => isCommandParam(p.name));
       const loc = execParam ? `${t.name}.${execParam.name}` : t.name;
       out.push({
         ruleId: "MCP001",
@@ -139,7 +140,7 @@ export const MCP006: Rule = {
 
 const DESTRUCTIVE_TOKENS = ["delete", "drop", "remove", "rm", "overwrite", "truncate", "destroy", "wipe", "erase", "purge", "unlink"];
 const WRITE_TOKENS = ["write", "update", "put", "set", "modify", "patch"];
-const CONFIRM_PARAMS = ["confirm", "confirmation", "dry_run", "dryrun", "force", "yes", "acknowledge"];
+const CONFIRM_TOKENS = ["confirm", "confirmation", "dry", "dryrun", "force", "yes", "acknowledge"];
 
 // MCP007 — destructive tool with no dry-run / confirmation affordance.
 export const MCP007: Rule = {
@@ -150,21 +151,24 @@ export const MCP007: Rule = {
   check(ctx) {
     const out: Finding[] = [];
     for (const t of tools(ctx)) {
+      // A tool that declares itself read-only is taken at its word.
+      if (t.annotations?.readOnlyHint === true) continue;
       const text = toolText(t);
       const isDestructive =
         hasAnyToken(text, DESTRUCTIVE_TOKENS) || hasAnyToken(text, WRITE_TOKENS);
       if (!isDestructive) continue;
-      const strongDestructive = hasAnyToken(text, DESTRUCTIVE_TOKENS);
-      const hasAffordance = t.params.some((p) =>
-        CONFIRM_PARAMS.includes(p.name.toLowerCase()),
-      );
+      // A server that declares destructiveHint is telling us outright.
+      const strongDestructive =
+        hasAnyToken(text, DESTRUCTIVE_TOKENS) || t.annotations?.destructiveHint === true;
+      // Token-level, so `force_overwrite`, `dry_run` and `confirm_delete` all count.
+      const hasAffordance = t.params.some((p) => hasAnyToken(normalize(p.name), CONFIRM_TOKENS));
       if (hasAffordance) continue;
       out.push({
         ruleId: "MCP007",
         severity: "high",
         category: "destructive",
         title: `${t.name} performs a destructive action with no confirmation`,
-        detail: `tool "${t.name}" ${strongDestructive ? "deletes/overwrites data" : "mutates state"} but exposes no dry-run or confirmation parameter, so an agent can trigger irreversible changes without a guard.`,
+        detail: `tool "${t.name}" ${strongDestructive ? "deletes/overwrites data" : "mutates state"} but exposes no dry-run or confirmation parameter, so an agent can trigger irreversible changes without a guard. Confirmation enforced at runtime (MCP elicitation, or a server-side confirmation list) is invisible to static introspection — verify the server's config before treating this as unguarded.`,
         location: t.name,
         remediation:
           "Add a required confirmation/dry-run parameter, make the operation idempotent, or gate destructive actions behind human approval.",

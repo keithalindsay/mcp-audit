@@ -148,6 +148,7 @@ export async function introspect(
           description: t.description ?? "",
           params: normalizeParams(t.inputSchema),
           rawInputSchema: t.inputSchema,
+          annotations: t.annotations,
         }),
       ),
       resources: (resources ?? []).map(

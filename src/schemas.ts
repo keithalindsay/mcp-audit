@@ -56,6 +56,16 @@ export const ToolSchema = z.object({
   description: z.string(),
   params: z.array(ToolParamSchema),
   rawInputSchema: z.unknown(),
+  /** MCP tool annotations (readOnlyHint, destructiveHint, …) as the server declared them. */
+  annotations: z
+    .object({
+      readOnlyHint: z.boolean().optional(),
+      destructiveHint: z.boolean().optional(),
+      idempotentHint: z.boolean().optional(),
+      openWorldHint: z.boolean().optional(),
+    })
+    .passthrough()
+    .optional(),
 });
 export type Tool = z.infer<typeof ToolSchema>;
 

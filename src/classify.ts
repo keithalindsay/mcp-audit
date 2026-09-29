@@ -22,7 +22,6 @@ export type ToolTags = {
 const EXECUTOR_TOKENS = [
   "exec",
   "execute",
-  "run",
   "shell",
   "command",
   "cmd",
@@ -36,6 +35,40 @@ const EXECUTOR_TOKENS = [
 // search/memory `query` param is a data SOURCE (below), not code execution, and
 // "process" (process_data) is usually benign. Real SQL/code executors carry
 // stronger signals ("sql", "execute", "exec", "shell", "eval", "spawn", …).
+
+// An identifier-shaped parameter names a HANDLE, not code or a path: `run_id`,
+// `execution_id`, `workflow_uuid`, `script_arn`. Such a name must not by itself make a
+// tool an executor — the value selects an existing thing, it is not the thing that runs.
+// This matters because `run_id` is near-universal in workflow orchestration (Temporal,
+// Airflow, GitHub Actions, MLflow, Dagster, Prefect), where it tokenizes to "run id" and
+// hits the "run" executor token. Suppression applies ONLY to parameter names, and ONLY to
+// the executor decision — the tool's own name and description still count, so
+// `execute(script_id)` remains an executor and the rule cannot be used as a bypass.
+const IDENTIFIER_SUFFIX = /_(id|ids|uuid|guid|arn|handle|ref)$/;
+
+function isIdentifierParam(name: string): boolean {
+  return IDENTIFIER_SUFFIX.test(name.toLowerCase());
+}
+
+// "run" is a WEAK executor signal: "Run an aggregation", "Run a find query" and "a job
+// run" are query verbs and nouns, not code execution (field regression: every
+// mongodb-mcp-server read tool and every domino_mcp_server status tool was a false
+// CRITICAL MCP001). It only counts when a parameter actually carries a command/code
+// payload — `run_shell(command)`, `run_domino_job(run_command)`, `run_python(code)`.
+const WEAK_EXECUTOR_TOKENS = ["run"];
+const COMMAND_PARAM_TOKENS = ["command", "cmd", "script", "code", "sql", "eval", "expression"];
+
+/** A parameter whose name says it carries a command/code payload (not a handle). */
+export function isCommandParam(name: string): boolean {
+  if (isIdentifierParam(name)) return false;
+  const n = normalize(name);
+  return COMMAND_PARAM_TOKENS.some((t) => n.includes(` ${t} `));
+}
+
+/** URLs in prose are documentation links, not capabilities — drop them before tokenizing. */
+export function stripUrls(text: string): string {
+  return text.replace(/\b(?:https?|ftp):\/\/\S+/gi, " ");
+}
 
 const SOURCE_TOKENS = [
   "read",
@@ -92,12 +125,22 @@ function matchedTokens(haystack: string, tokens: string[]): string[] {
 
 export function classifyTool(tool: Tool): ToolTags {
   const paramNames = tool.params.map((p) => p.name).join(" ");
+  const execParamNames = tool.params
+    .filter((p) => !isIdentifierParam(p.name))
+    .map((p) => p.name)
+    .join(" ");
+  const description = stripUrls(tool.description);
   const nameText = normalize(tool.name);
-  const bodyText = normalize(`${tool.name} ${tool.description} ${paramNames}`);
+  const bodyText = normalize(`${tool.name} ${description} ${paramNames}`);
+  const execText = normalize(`${tool.name} ${description} ${execParamNames}`);
+  const hasCommandParam = tool.params.some((p) => isCommandParam(p.name));
 
   const reasons: string[] = [];
 
-  const execHits = matchedTokens(bodyText, EXECUTOR_TOKENS);
+  const execHits = [
+    ...matchedTokens(execText, EXECUTOR_TOKENS),
+    ...(hasCommandParam ? matchedTokens(execText, WEAK_EXECUTOR_TOKENS) : []),
+  ];
   const sourceHits = matchedTokens(bodyText, SOURCE_TOKENS);
   const sinkHits = matchedTokens(bodyText, SINK_TOKENS);
 
@@ -108,7 +151,9 @@ export function classifyTool(tool: Tool): ToolTags {
   const sink = sinkHits.length > 0;
 
   if (executor) {
-    const fromName = matchedTokens(nameText, EXECUTOR_TOKENS);
+    const fromName = matchedTokens(nameText, [...EXECUTOR_TOKENS, ...WEAK_EXECUTOR_TOKENS]).filter(
+      (t) => execHits.includes(t),
+    );
     const shown = (fromName.length ? fromName : execHits).slice(0, 3);
     reasons.push(`executor: matches ${shown.map((t) => `"${t}"`).join(", ")}`);
   }

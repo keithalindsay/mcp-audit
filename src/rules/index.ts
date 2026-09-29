@@ -4,6 +4,7 @@ import type { Rule, RuleContext } from "./types.js";
 import { MCP001, MCP002, MCP003, MCP006, MCP007, MCP009 } from "./tools.js";
 import { MCP004, MCP011 } from "./combinations.js";
 import { MCP005, MCP010 } from "./config.js";
+import { stripUrls } from "../classify.js";
 
 export type { Rule, RuleContext } from "./types.js";
 
@@ -22,8 +23,11 @@ export const MCP008: Rule = {
     const out: Finding[] = [];
     for (const t of ctx.model.tools) {
       const tags = ctx.classified.get(t.name);
-      const text = `${t.name} ${t.description}`.toLowerCase();
-      const external = /http|https|url|web|fetch|request|download|scrape|browse/.test(text);
+      // Word-start anchored: `maxRequestPayloadBytes` does not contain the word
+      // "request" (field regression on mongodb-mcp-server insert-many/update-many).
+      // Doc links are stripped first — a URL in prose is not a fetch capability.
+      const text = stripUrls(`${t.name} ${t.description}`).toLowerCase();
+      const external = /\b(?:https?|url|web|fetch|request|download|scrape|brows)/.test(text);
       if (tags?.source && external) {
         out.push({
           ruleId: "MCP008",

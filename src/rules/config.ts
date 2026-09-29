@@ -52,11 +52,11 @@ export const MCP010: Rule = {
         severity: "high",
         category: "secrets",
         title: `resource ${r.uri} exposes sensitive data`,
-        detail: `resource "${r.uri}"${r.name ? ` (${r.name})` : ""} appears to expose sensitive data (environment, credentials, keys, or home-directory files) directly to the agent — a ready-made source for exfiltration.`,
+        detail: `resource "${r.uri}"${r.name ? ` (${r.name})` : ""} appears to expose sensitive data (environment, credentials, keys, or home-directory files) directly to the agent — a ready-made source for exfiltration. This is inferred from the resource's URI, name and description; its contents were not read, and a server that redacts secrets before returning them will not leak them (mongodb-mcp-server's config://config does).`,
         location: r.uri,
         remediation:
           "Do not expose environment/credential/home-directory contents as a resource. Scope resources to non-sensitive, explicitly-allowlisted data.",
-        confidence: "high",
+        confidence: "medium",
       });
     }
     return out;

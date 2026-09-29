@@ -27,9 +27,18 @@ const COMMAND_TOKENS = ["command", "cmd", "script", "code", "sql", "arg", "args"
  * Classify a parameter by what its NAME implies. Used to route unconstrained-string
  * findings: path→MCP002, url→MCP003, command→MCP006.
  */
+// A param named for a file's CONTENT (`file_content`, `file_data`, `file_text`) carries
+// bytes, not a location — it must not become an MCP002 path finding (field regression:
+// domino_mcp_server upload_file_to_domino_project.file_content).
+const CONTENT_TOKENS = ["content", "contents", "data", "text", "body", "bytes"];
+
 export function paramIntent(name: string): ParamIntent {
   const n = normalize(name);
-  if (hasAnyToken(n, PATH_TOKENS)) return "path";
+  // Content only when the LAST word is a content word: `file_content` is bytes, but
+  // `data_dir` / `text_file` are still locations.
+  const words = n.trim().split(" ");
+  const namesContent = CONTENT_TOKENS.includes(words[words.length - 1] ?? "");
+  if (hasAnyToken(n, PATH_TOKENS) && !namesContent) return "path";
   if (hasAnyToken(n, URL_TOKENS)) return "url";
   if (hasAnyToken(n, COMMAND_TOKENS)) return "command";
   return null;
